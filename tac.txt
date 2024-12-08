@@ -1,0 +1,50 @@
+= 5,  => a
+= 5.4,  => f
+= c,  => cs
++ a, 10 => t3
+= t3,  => b
+= this is amad,  => s
+print a,  =>
+<= b, 10 => t7
+return b,  =>
++ a, b => t9
+= t9,  => a
+<= a, 20 => t11
+print a,  =>
++ a, 1 => t13
+= t13,  => a
+< i, 10 => t15
++ i, 1 => t16
+= t16,  => i
+print i,  =>
+Symbol Table:
+--------------------------------
+Name    Type    Scope Level
+--------------------------------
+i       int     25
+sa      String  2
+f       float   4
+b       int     6
+amd     string  10
+a       int     1
+cs      char    7
+--------------------------------
+Generated Assembly Code is:
+MOV R0, 5
+MOV R1, 5.4
+MOV R2, c
+ADD R0,
+MOV R3, R0
+MOV R4, t3
+MOV R5, this is amad
+MOV EAX, R4
+RET
+ADD R0, R4
+MOV R8, R0
+MOV R0, t9
+ADD R0,
+MOV R10, R0
+MOV R0, t13
+ADD ,
+MOV R12,
+MOV , t16

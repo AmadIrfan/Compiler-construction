@@ -1,0 +1,28 @@
+int a;
+String sa;
+a = 5;
+float f;
+f=5.4;
+int b;
+char cs;
+cs ='c';
+b = a + 10;
+string amd;
+s = "this is amad";
+print(a);
+if (b <= 10) {
+    return b;
+} else{
+    a=a+b;
+}
+
+while (a <= 20) {
+    print(a);
+    a=a+1;
+}
+//hello
+/* this is multiline comment */
+for(int i;i<10;i=i+1;) {
+    print(i);
+}
+
