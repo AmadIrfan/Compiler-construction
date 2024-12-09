@@ -198,6 +198,7 @@ struct TAC
 
     TAC(string o, string a1, string a2, string res) : op(o), arg1(a1), arg2(a2), result(res) {}
 };
+
 class AssemblyGenerator
 {
 private:
@@ -212,27 +213,61 @@ public:
     {
         for (const auto &tac : tacList)
         {
+            // Ensure the result variable has a register allocated
             if (registerMap.find(tac.result) == registerMap.end())
             {
                 registerMap[tac.result] = allocateRegister(); // Allocate a register for result
             }
 
+            // Handle assignment
             if (tac.op == "=") // Assignment
             {
-                assemblyCode.push_back("MOV " + registerMap[tac.result] + ", " + tac.arg1);
+                if (isNumber(tac.arg1) || isBoolean(tac.arg1) || isString(tac.arg1))
+                {
+                    assemblyCode.push_back("MOV " + registerMap[tac.result] + ", " + tac.arg1);
+                }
+                else
+                {
+                    // Ensure arg1 is in a register
+                    if (registerMap.find(tac.arg1) == registerMap.end())
+                    {
+                        registerMap[tac.arg1] = allocateRegister();
+                        assemblyCode.push_back("MOV " + registerMap[tac.arg1] + ", " + tac.arg1);
+                    }
+                    assemblyCode.push_back("MOV " + registerMap[tac.result] + ", " + registerMap[tac.arg1]);
+                }
             }
+            // Handle binary operations
             else if (tac.op == "+" || tac.op == "-" || tac.op == "*" || tac.op == "/")
             {
                 string opAssembly = (tac.op == "+") ? "ADD" : (tac.op == "-") ? "SUB"
                                                           : (tac.op == "*")   ? "MUL"
                                                                               : "DIV";
-                // For binary operations, we need to ensure the result is stored correctly
+                // Ensure both operands are in registers
+                if (registerMap.find(tac.arg1) == registerMap.end())
+                {
+                    registerMap[tac.arg1] = allocateRegister();
+                    assemblyCode.push_back("MOV " + registerMap[tac.arg1] + ", " + tac.arg1);
+                }
+                if (registerMap.find(tac.arg2) == registerMap.end())
+                {
+                    registerMap[tac.arg2] = allocateRegister();
+                    assemblyCode.push_back("MOV " + registerMap[tac.arg2] + ", " + tac.arg2);
+                }
                 assemblyCode.push_back(opAssembly + " " + registerMap[tac.arg1] + ", " + registerMap[tac.arg2]);
                 assemblyCode.push_back("MOV " + registerMap[tac.result] + ", " + registerMap[tac.arg1]);
             }
+            // Handle return statement
             else if (tac.op == "return")
             {
-                assemblyCode.push_back("MOV EAX, " + registerMap[tac.arg1]);
+                if (registerMap.find(tac.arg1) != registerMap.end())
+                {
+                    assemblyCode.push_back("MOV EAX, " + registerMap[tac.arg1]);
+                }
+                else
+                {
+                    assemblyCode.push_back("MOV EAX, " + tac.arg1); // Assuming arg1 is a constant or immediate value
+                }
                 assemblyCode.push_back("RET");
             }
         }
@@ -251,6 +286,22 @@ private:
     string allocateRegister()
     {
         return "R" + to_string(regCounter++); // Simple register allocation (R0, R1, ...)
+    }
+
+    bool isNumber(const string &s)
+    {
+        // Check if the string is a number (integer or float)
+        return !s.empty() && (isdigit(s[0]) || s[0] == '-' || s[0] == '+');
+    }
+
+    bool isBoolean(const string &s)
+    {
+        return s == "true" || s == "false";
+    }
+
+    bool isString(const string &s)
+    {
+        return s.front() == '"' && s.back() == '"'; // Simple check for string literals
     }
 };
 
@@ -781,7 +832,7 @@ private:
         }
         expect(T_RBRACE); // Expect '}'
     }
-    
+
     void parseReturnStatement()
     {
         expect(T_RETURN);
