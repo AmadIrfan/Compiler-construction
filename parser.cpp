@@ -40,6 +40,8 @@ enum TokenType
     T_PERIOD,
     T_PRINT,
     T_IF,
+    T_BOOL,
+    T_FUNCTION,
     T_EQ,
     T_LE,
     T_AND
@@ -83,6 +85,10 @@ string tokenTypeToString(TokenType type)
         return "NUM";
     case T_ELSE:
         return "ELSE";
+    case T_BOOL:
+        return "BOOL";
+    case T_FUNCTION:
+        return "FUNCTION";
     case T_PLUS:
         return "PLUS";
     case T_MINUS:
@@ -541,6 +547,18 @@ public:
         {
             return T_IF;
         }
+        if (word == "bool")
+        {
+            return T_BOOL;
+        }
+        if (word == "true" || word == "false")
+        {
+            return T_BOOL; // Return boolean token type
+        }
+        if (word == "function")
+        {
+            return T_FUNCTION; // Return function token type
+        }
 
         return T_ID;
     }
@@ -588,13 +606,21 @@ private:
     void parseStatement()
     {
         if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT ||
-            tokens[pos].type == T_CHAR || tokens[pos].type == T_STRING)
+            tokens[pos].type == T_CHAR || tokens[pos].type == T_STRING ||
+            tokens[pos].type == T_BOOL)
         {
             parseDeclaration();
         }
         else if (tokens[pos].type == T_ID)
         {
-            parseAssignment();
+            if (tokens[pos + 1].type == T_LPAREN) // Check for function call
+            {
+                parseFunctionCall(); // Implement this method to handle function calls
+            }
+            else
+            {
+                parseAssignment();
+            }
         }
         else if (tokens[pos].type == T_IF)
         {
@@ -622,6 +648,10 @@ private:
         {
             parseBlock();
         }
+        else if (tokens[pos].type == T_FUNCTION) // Check for function declaration
+        {
+            parseFunctionDeclaration();
+        }
         else
         {
             cout << "here in parse statement" << endl;
@@ -631,7 +661,26 @@ private:
             exit(1);
         }
     }
+    void parseFunctionCall()
+    {
+        string funcName = tokens[pos].value; // Store the function name
+        expect(T_ID);                        // Expect the function name
+        expect(T_LPAREN);                    // Expect '('
 
+        // Parse arguments (optional)
+        while (tokens[pos].type != T_RPAREN)
+        {
+            string arg = parseExpression(); // Parse each argument
+            // You can generate TAC for function arguments if needed
+            if (tokens[pos].type == T_COMMA)
+            {
+                expect(T_COMMA); // Expect ',' for next argument
+            }
+        }
+        expect(T_RPAREN);                                 // Expect ')'
+        expect(T_SEMICOLON);                              // Expect ';' after function call
+        tacList.push_back(TAC("call", funcName, "", "")); // Generate TAC for function call
+    }
     void parseDeclaration()
     {
         string type = tokens[pos].value; // Store the type
@@ -686,7 +735,53 @@ private:
             parseStatement();
         }
     }
+    void parseFunctionDeclaration()
+    {
+        expect(T_FUNCTION);                  // Expect the 'function' keyword
+        string funcName = tokens[pos].value; // Store the function name
+        expect(T_ID);                        // Expect the function name
+        expect(T_LPAREN);                    // Expect '('
 
+        // Parse parameters (optional)
+        while (tokens[pos].type != T_RPAREN)
+        {
+            string paramType;
+
+            // Check for valid parameter types
+            if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT ||
+                tokens[pos].type == T_CHAR || tokens[pos].type == T_STRING ||
+                tokens[pos].type == T_BOOL) // Add T_BOOL here
+            {
+                paramType = tokens[pos].value; // Store parameter type
+                expect(tokens[pos].type);      // Expect parameter type
+            }
+            else
+            {
+                cout << "Unexpected parameter type '" << tokens[pos].value
+                     << "' on line " << tokens[pos].line << endl;
+                exit(1);
+            }
+
+            string paramName = tokens[pos].value;                          // Store parameter name
+            expect(T_ID);                                                  // Expect parameter name
+            symbolTable.addSymbol(paramName, paramType, tokens[pos].line); // Add parameter to symbol table
+
+            if (tokens[pos].type == T_COMMA)
+            {
+                expect(T_COMMA); // Expect ',' for next parameter
+            }
+        }
+        expect(T_RPAREN); // Expect ')'
+        expect(T_LBRACE); // Expect '{'
+
+        // Parse function body
+        while (tokens[pos].type != T_RBRACE)
+        {
+            parseStatement();
+        }
+        expect(T_RBRACE); // Expect '}'
+    }
+    
     void parseReturnStatement()
     {
         expect(T_RETURN);
@@ -762,7 +857,7 @@ private:
         expect(T_LPAREN);
 
         // Parse initialization (optional)
-        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT || tokens[pos].type == T_CHAR || tokens[pos].type == T_STRING)
+        if (tokens[pos].type == T_INT || tokens[pos].type == T_FLOAT || tokens[pos].type == T_CHAR || tokens[pos].type == T_STRING || tokens[pos].type == T_BOOL)
         {
             parseDeclaration(); // Parse declaration, like `int i ;`
         }
@@ -786,7 +881,7 @@ private:
 
     string parseFactor()
     {
-        if (tokens[pos].type == T_NUM || tokens[pos].type == T_FLOAT || tokens[pos].type == T_ID)
+        if (tokens[pos].type == T_NUM || tokens[pos].type == T_FLOAT || tokens[pos].type == T_ID || tokens[pos].type == T_BOOL)
         {
             string value = tokens[pos].value;
             pos++;
