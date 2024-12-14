@@ -205,9 +205,10 @@ private:
     vector<string> assemblyCode;     // Stores generated assembly instructions
     map<string, string> registerMap; // Map TAC variables to registers
     int regCounter;                  // Counter for available registers
+    int paramCounter;                // Counter for function parameters
 
 public:
-    AssemblyGenerator() : regCounter(0) {}
+    AssemblyGenerator() : regCounter(0), paramCounter(0) {}
 
     void generateFromTAC(const vector<TAC> &tacList)
     {
@@ -269,6 +270,41 @@ public:
                     assemblyCode.push_back("MOV EAX, " + tac.arg1); // Assuming arg1 is a constant or immediate value
                 }
                 assemblyCode.push_back("RET");
+            }
+            // Handle print statement
+            else if (tac.op == "print")
+            {
+                if (registerMap.find(tac.result) != registerMap.end())
+                {
+                    assemblyCode.push_back("MOV EAX, " + registerMap[tac.result]); // Move the value to EAX
+                }
+                else
+                {
+                    assemblyCode.push_back("MOV EAX, " + tac.result); // If it's a constant, move it directly
+                }
+                assemblyCode.push_back("CALL print"); // Call the print function
+            }
+            // Handle function call
+            else if (tac.op == "call")
+            {
+                // Push arguments to stack (if any)
+                assemblyCode.push_back("PUSH EBP");         // Save frame pointer
+                assemblyCode.push_back("MOV EBP, ESP");     // Set up stack frame
+                for (int i = paramCounter - 1; i >= 0; --i) // Reverse order for arguments
+                {
+                    assemblyCode.push_back("PUSH " + registerMap["param" + to_string(i)]);
+                }
+                assemblyCode.push_back("CALL " + tac.result); // Call function
+                assemblyCode.push_back("POP EBP");            // Restore frame pointer
+                assemblyCode.push_back("MOV ESP, EBP");       // Reset stack pointer
+            }
+            // Handle parameters
+            else if (tac.op == "param")
+            {
+                // Pass the parameter by moving it into the corresponding register
+                registerMap["param" + to_string(paramCounter)] = allocateRegister();
+                assemblyCode.push_back("MOV " + registerMap["param" + to_string(paramCounter)] + ", " + tac.result);
+                paramCounter++;
             }
         }
     }
@@ -429,10 +465,14 @@ public:
             case '}':
                 tokens.push_back(Token{TokenType::T_RBRACE, "}", lineNumber});
                 break;
+            case ',':
+                tokens.push_back(Token{TokenType::T_COMMA, ",", lineNumber});
+                break;
             case ';':
                 tokens.push_back(Token{TokenType::T_SEMICOLON, ";", lineNumber});
                 break;
             default:
+                cout << current << lineNumber << endl;
                 cout << "Unexpected character: " << current << endl;
                 break;
             }
@@ -456,7 +496,6 @@ public:
     {
         size_t start = pos;
         bool isFloat = false;
-
         while (pos < src.size() && (isdigit(src[pos]) || src[pos] == '.'))
         {
             if (src[pos] == '.')
@@ -637,19 +676,31 @@ public:
     {
         return tacList;
     }
-
-    void printTokens()
+    vector<TAC> printTACList() const
     {
-        for (int i = 0; i < tokens.size(); i++)
+        for (size_t i = 0; i < tacList.size(); i++)
         {
-            cout << "Type: " << tokenTypeToString(tokens[i].type)
-                 << " Value: " << tokens[i].value
-                 << " Line: " << tokens[i].line << endl;
+            cout << tacList[i].op << "\t" << tacList[i].arg1 << "\t" << tacList[i].arg2 << "\t" << tacList[i].result << endl;
         }
     }
 
+    void printTokens()
+    {
+        cout << "Token Table:" << endl;
+        cout << "--------------------------------" << endl;
+        cout << "Type\t Value\t line Number" << endl;
+        cout << "--------------------------------" << endl;
+
+        for (int i = 0; i < tokens.size(); i++)
+        {
+            cout << tokens[i].line << "\t" << tokens[i].value << "\t" << tokenTypeToString(tokens[i].type) << endl;
+        }
+        cout << "--------------------------------" << endl;
+    }
+
 private:
-    vector<Token> tokens;
+    vector<Token>
+        tokens;
     size_t pos;
     SymbolTable &symbolTable;
     vector<TAC> tacList; // List to store generated TAC
@@ -706,7 +757,6 @@ private:
         else
         {
             cout << "here in parse statement" << endl;
-
             cout << "Unexpected token '" << tokens[pos].value
                  << "' on line " << tokens[pos].line << endl;
             exit(1);
@@ -716,21 +766,32 @@ private:
     {
         string funcName = tokens[pos].value; // Store the function name
         expect(T_ID);                        // Expect the function name
-        expect(T_LPAREN);                    // Expect '('
+        expect(T_LPAREN);
+        vector<string> args; // Expect '('
 
         // Parse arguments (optional)
         while (tokens[pos].type != T_RPAREN)
         {
             string arg = parseExpression(); // Parse each argument
-            // You can generate TAC for function arguments if needed
+            string tempVar = "t" + to_string(tacList.size());
+            tacList.push_back(TAC("arg", arg, "", tempVar)); // Generate TAC for argument
+            args.push_back(tempVar);                         // Store the argument's temporary variable
             if (tokens[pos].type == T_COMMA)
             {
                 expect(T_COMMA); // Expect ',' for next argument
             }
         }
-        expect(T_RPAREN);                                 // Expect ')'
-        expect(T_SEMICOLON);                              // Expect ';' after function call
-        tacList.push_back(TAC("call", funcName, "", "")); // Generate TAC for function call
+        expect(T_RPAREN); // Expect ')'
+        expect(T_SEMICOLON);
+        string callTempVar = "t" + to_string(tacList.size());
+        tacList.push_back(TAC("call", funcName, "", callTempVar));
+
+        // Add the arguments to the TAC (as 'param' instructions)
+        for (size_t i = 0; i < args.size(); ++i)
+        {
+            tacList.push_back(TAC("param", args[i], "", "")); // Add each argument as 'param'
+        } // Expect ';' after function call
+          // tacList.push_back(TAC("call", funcName, "", "")); // Generate TAC for function call
     }
     void parseDeclaration()
     {
@@ -872,6 +933,7 @@ private:
 
     string parseExpression()
     {
+
         string result = parseTerm();
         // cout << result << endl;
         while (tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS ||
@@ -895,6 +957,7 @@ private:
             string op = tokens[pos].value;
             pos++;
             string right = parseFactor();
+            // a
             string tempVar = "t" + to_string(tacList.size());
             tacList.push_back(TAC(op, result, right, tempVar));
             result = tempVar;
@@ -1007,13 +1070,16 @@ int main(int argc, char *argv[])
     vector<Token> tokens = lexer.tokenize();
     SymbolTable symbolTable;            // Declare a SymbolTable object
     Parser parser(tokens, symbolTable); // Pass symbolTable to the Parser constructor
-    parser.printTokens();
+    // parser.printTokens();
     parser.parseProgram();
 
-    // // Generate assembly code from TAC
+    // Generate assembly code from TAC
     AssemblyGenerator asmGen;
+
     asmGen.generateFromTAC(parser.getTACList());
+    // parser.printTACList();
     asmGen.printAssembly();
+    // symbolTable.printTable();
 
     return 0;
 }
